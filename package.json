@@ -1,0 +1,60 @@
+{
+  "name": "n8n-mcp-guard",
+  "version": "1.1.0",
+  "type": "module",
+  "license": "MIT",
+  "description": "Safety-conscious MCP server for n8n workflow inspection and controlled automation changes",
+  "author": "Faraz Hayder",
+  "homepage": "https://github.com/FarazHayder/n8n-mcp-guard#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/FarazHayder/n8n-mcp-guard.git"
+  },
+  "bugs": {
+    "url": "https://github.com/FarazHayder/n8n-mcp-guard/issues"
+  },
+  "keywords": [
+    "n8n",
+    "mcp",
+    "model-context-protocol",
+    "modelcontextprotocol",
+    "automation",
+    "ai-agents",
+    "claude-code",
+    "codex"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "bin": {
+    "n8n-mcp-guard": "dist/index.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE",
+    "SECURITY.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js",
+    "dev": "tsx src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "smoke": "node scripts/smoke.mjs",
+    "check": "npm run typecheck && npm test && npm run build && npm run smoke",
+    "prepare": "npm run build",
+    "prepublishOnly": "npm run check"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.0",
+    "dotenv": "^16.4.5",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.5.3",
+    "vitest": "^2.1.9"
+  }
+}
