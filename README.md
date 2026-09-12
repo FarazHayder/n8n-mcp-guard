@@ -32,7 +32,11 @@ meantime.
 
 ## Why you can trust it
 
-- **67 tests**, covering every path where a write is supposed to be refused.
+- **68 unit tests** covering every path where a write is supposed to be refused,
+  plus a **live integration suite** that drives the write tools through the real
+  MCP surface against a real n8n instance: create, plan, apply, stale-plan
+  refusal, clone neutralization, the delete guard, and verified cleanup.
+  Run it yourself with `npm run test:integration`.
 - **Validated against a real instance**: workflow fingerprinting, diffing,
   clone construction and the backup gate were run across **99 real production
   workflows** spanning **40 distinct node types**, correctly neutralizing
@@ -186,19 +190,13 @@ same entry shape under a `servers` key instead of `mcpServers`; add it through
 
 ## Where the guarantees stop
 
-Being precise about this is the point of the project, so here is the honest
-boundary.
+Being precise about this is the point of the project, so here is the boundary.
 
 **Confirming a message looked right is yours.** If a change affects delivery,
 someone still has to look at the test inbox. No server can prove a human read
 an email, and this one does not pretend to. What it guarantees is that you can
 always get back to the version that worked. `CLAUDE.md`, `AGENTS.md` and the
 bundled agent skill encode the review procedure so your agent follows it.
-
-**The write paths are unit-tested, not integration-tested.** Every refusal path
-is covered against a fake n8n, and the read-only layer has been exercised
-against 99 real workflows. An integration suite against a disposable live
-instance is on the roadmap.
 
 **Two tools are examples, not products.** `n8n_test_supplier_email_action_routing`
 and `n8n_configure_supplier_email_action_routing` target one exact
@@ -233,7 +231,7 @@ Run `npm run check` before opening a pull request.
 
 ## Roadmap
 
-- An integration suite against a disposable n8n instance in CI.
+- Run the integration suite in CI against an ephemeral n8n container.
 - Generic execution rehearsal: drive a clone with synthetic input and assert
   which nodes ran, without workflow-specific code.
 - Richer diffs, including expression-level changes inside Code nodes.

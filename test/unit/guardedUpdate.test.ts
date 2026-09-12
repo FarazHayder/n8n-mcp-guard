@@ -202,6 +202,26 @@ describe('applyUpdatePlan', () => {
     expect(api.publishes).toBe(1);
   });
 
+  it('falls back to a plain PUT when the instance rejects publishIfActive on a draft save', async () => {
+    // Regression: a live instance rejected the query parameter even when sent
+    // as false, and the fallback only ran when publishing was requested, so
+    // the ordinary draft-save path threw instead of recovering.
+    let first = true;
+    const api = new FakeApi(workflow({ active: false }), undefined, () => {
+      if (first) {
+        first = false;
+        throw new N8nApiError(400, "n8n API request failed: Unknown query parameter 'publishIfActive'");
+      }
+    });
+    const plan = await createUpdatePlan(api.asClient(), 'wf-1', proposed(), dir);
+    const result = await applyUpdatePlan(api.asClient(), plan.planId, false, dir);
+
+    expect(result.ok).toBe(true);
+    expect(result.publishMode).toBe('legacy-put');
+    expect(result.readbackVerified).toBe(true);
+    expect(api.publishes).toBe(0);
+  });
+
   it('restores are just plans, so a stale backup cannot be written blind', async () => {
     const api = new FakeApi(workflow());
     const backup = writeBackup(workflow({ versionId: 'ancient' }), dir);

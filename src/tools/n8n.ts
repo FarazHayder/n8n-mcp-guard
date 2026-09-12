@@ -168,9 +168,7 @@ export function registerN8nTools(server: McpServer): void {
             error instanceof N8nApiError &&
             error.statusCode === 400 &&
             error.message.includes("Unknown query parameter 'publishIfActive'");
-          if (!unsupportedPublishQuery || publish_if_active !== true || current.active !== true) {
-            throw error;
-          }
+          if (!unsupportedPublishQuery) throw error;
 
           // Older n8n versions reject publishIfActive. Re-check optimistic
           // concurrency, save through the legacy PUT, verify the saved graph,
@@ -193,8 +191,12 @@ export function registerN8nTools(server: McpServer): void {
               inspection: inspectEmailActionRoutingSafe(saved),
             });
           }
-          await api.publishWorkflow(workflow_id, saved.versionId);
-          publishMode = 'legacy-put-then-explicit-publish';
+          if (publish_if_active === true && current.active === true) {
+            await api.publishWorkflow(workflow_id, saved.versionId);
+            publishMode = 'legacy-put-then-explicit-publish';
+          } else {
+            publishMode = 'legacy-put';
+          }
         }
         const verified = await api.getWorkflow(workflow_id);
         const expectedSignature = emailActionRoutingSignature(configured.workflow);

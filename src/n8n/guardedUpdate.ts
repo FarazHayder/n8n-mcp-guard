@@ -155,17 +155,23 @@ export async function applyUpdatePlan(
       error instanceof N8nApiError &&
       error.statusCode === 400 &&
       error.message.includes("Unknown query parameter 'publishIfActive'");
-    if (!unsupportedPublishQuery || !shouldPublish) throw error;
+    if (!unsupportedPublishQuery) throw error;
 
-    // Older n8n rejects publishIfActive. Save through the legacy PUT, verify
-    // the saved graph, then publish that exact version explicitly.
+    // Some n8n versions reject the publishIfActive query parameter outright,
+    // including when it is sent as false. Fall back to the plain PUT for every
+    // such instance, not only when publishing was requested, then verify the
+    // saved graph before deciding whether to publish it.
     await api.updateWorkflow(plan.workflowId, plan.definition, null);
     const saved = await api.getWorkflow(plan.workflowId);
     if (workflowSignature(saved) !== plan.targetSignature) {
-      throw new Error('Legacy update did not persist the requested graph; refusing to publish.');
+      throw new Error('Legacy update did not persist the requested graph; refusing to continue.');
     }
-    await api.publishWorkflow(plan.workflowId, saved.versionId);
-    publishMode = 'legacy-put-then-explicit-publish';
+    if (shouldPublish) {
+      await api.publishWorkflow(plan.workflowId, saved.versionId);
+      publishMode = 'legacy-put-then-explicit-publish';
+    } else {
+      publishMode = 'legacy-put';
+    }
   }
 
   // Gate 3: read back and prove n8n stored what we asked for.

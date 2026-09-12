@@ -1,6 +1,6 @@
 {
   "name": "n8n-mcp-guard",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "type": "module",
   "license": "MIT",
   "description": "Safety-conscious MCP server for n8n workflow inspection and controlled automation changes",
@@ -42,6 +42,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "smoke": "node scripts/smoke.mjs",
+    "test:integration": "node scripts/integration.mjs",
     "check": "npm run typecheck && npm test && npm run build && npm run smoke",
     "prepare": "npm run build",
     "prepublishOnly": "npm run check"
