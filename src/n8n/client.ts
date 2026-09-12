@@ -195,7 +195,11 @@ export function workflowUpdatePayload(workflow: N8nWorkflow): N8nWorkflow {
   };
 }
 
-function workflowSettingsPayload(settings: Record<string, unknown>): Record<string, unknown> {
+function workflowSettingsPayload(
+  settings: Record<string, unknown> | undefined,
+): Record<string, unknown> {
+  // An agent-authored definition may legitimately omit settings entirely.
+  const source = settings ?? {};
   const allowed = [
     'saveExecutionProgress',
     'saveManualExecutions',
@@ -207,6 +211,6 @@ function workflowSettingsPayload(settings: Record<string, unknown>): Record<stri
     'executionOrder',
   ] as const;
   return Object.fromEntries(
-    allowed.filter((key) => settings[key] !== undefined).map((key) => [key, settings[key]]),
+    allowed.filter((key) => source[key] !== undefined).map((key) => [key, source[key]]),
   );
 }

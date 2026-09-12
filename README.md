@@ -3,17 +3,44 @@
 [![npm version](https://img.shields.io/npm/v/n8n-mcp-guard.svg)](https://www.npmjs.com/package/n8n-mcp-guard)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%3E%3D22-brightgreen.svg)](https://nodejs.org)
+[![CI](https://github.com/FarazHayder/n8n-mcp-guard/actions/workflows/ci.yml/badge.svg)](https://github.com/FarazHayder/n8n-mcp-guard/actions/workflows/ci.yml)
 
-**The n8n MCP server that can't silently break production.**
+**Let an AI agent build and change your n8n workflows — with a guaranteed way back.**
 
-A [Model Context Protocol](https://modelcontextprotocol.io/) server for n8n
-where every write is gated. No mutation can happen without a private write
-token, and with a token set every write still needs per-call approval, must
-match the exact workflow version it was planned against, must have a verified
-backup on disk, and is read back and compared before anything is published.
+Agents are good at writing workflow logic and bad at knowing when they have
+broken something. `n8n-mcp-guard` sits in between. Every change is backed up
+before it happens, checked against the exact version it was designed for, and
+verified against the live instance after saving. If anything does not line up,
+the write is refused rather than attempted and hoped for.
 
-Set it up once. Use it from any MCP-capable agent, in every repository, with
-your n8n credentials living outside all of them.
+Set it up once, use it from any MCP-capable agent, in every repository.
+
+## Who it's for
+
+**You're building something new.** Describe the automation you want, let the
+agent write it, and create it as an inactive workflow you can inspect before
+anything runs. Iterate with a reviewable diff at every step. You never have to
+read raw JSON to know what changed, and you can always get back to the last
+version that worked.
+
+**You have something already running.** The workflow that quietly emails your
+customers or syncs your orders is the one you least want an agent improvising
+on. Here, a change to it is a two-phase commit: plan it, review the diff,
+rehearse it on a disposable clone with every trigger and outbound call
+disabled, then commit — and only if nothing moved underneath you in the
+meantime.
+
+## Why you can trust it
+
+- **67 tests**, covering every path where a write is supposed to be refused.
+- **Validated against a real instance**: workflow fingerprinting, diffing,
+  clone construction and the backup gate were run across **99 real production
+  workflows** spanning **40 distinct node types**, correctly neutralizing
+  **114 triggers** and **304 outbound nodes** — zero failures.
+- **Nothing can write until you say so.** With no write token configured, the
+  mutating tools are not merely unused, they are never registered at all.
+- **CI on Node 22 and 24.** MIT licensed. No telemetry, no network calls except
+  to your own n8n instance.
 
 ## Quick start
 
@@ -34,13 +61,11 @@ Create one file and every repository is covered:
 N8N_BASE_URL=https://your-instance.example.com
 N8N_API_KEY=your-api-key
 
-# Optional. Omit for a read-only server; set it to enable the write tools.
-MCP_WRITE_AUTH_TOKEN=
+# Set this to enable the write tools. Leave empty for a read-only server.
+MCP_WRITE_AUTH_TOKEN=a-long-random-value
 ```
 
-Create the API key in n8n under **Settings → n8n API**. Leave
-`MCP_WRITE_AUTH_TOKEN` empty until you actually want the mutating tools: with
-no token they are not registered at all.
+Create the API key in n8n under **Settings → n8n API**.
 
 **3. Register with your agent, once**
 
@@ -52,95 +77,65 @@ claude mcp add --transport stdio --scope user n8n-guard -- n8n-mcp-guard
 codex mcp add n8n-guard -- n8n-mcp-guard
 ```
 
-That's it. Both register at user scope, so the server is available in every
-repository without adding anything to any project. Nothing goes in your
-project's `package.json` — an MCP server is a process your agent launches, not
-a dependency you install per repo.
+Both register at user scope, so the server is available in every repository
+without adding anything to any project. Nothing goes in your project's
+`package.json` — an MCP server is a process your agent launches, not a
+dependency you install per repo.
 
-## What makes this different
+## How a change actually works
 
-The excellent [`n8n-mcp`](https://www.npmjs.com/package/n8n-mcp) gives agents
-deep *knowledge* of n8n's node catalog so they can author workflows. This
-project solves the opposite problem: you already have a workflow running in
-production, and you want an agent to change it **without the change going
-wrong silently.**
+```text
+n8n_plan_workflow_update    backs up, diffs, hands you a plan_id
+      ↓                     you read the diff and agree to it
+n8n_create_test_clone       rehearse: no triggers, no outbound calls
+n8n_delete_test_clone       cleaned up, verified gone
+      ↓
+n8n_apply_workflow_update   commits only if nothing moved; verifies by readback
+```
 
-The guarantees it is built around:
+What that buys you, concretely:
 
-- **Two-phase commit for every update.** `plan` reads the live workflow, backs
-  it up, and records a fingerprint of exactly the state your change was
-  designed against. `apply` refuses unless the workflow is *still* that state,
-  byte for byte. A concurrent edit aborts the write instead of silently
-  clobbering it, including the case where someone changed the graph but the
-  version ID did not move.
-- **A backup gate that is actually enforced.** Not advice in a markdown file:
-  `apply` looks for a checksum-verified backup of the exact version being
-  modified and refuses to write without one. Tampered backups do not count.
-- **Readback verification.** After saving, the graph is re-fetched and
-  fingerprinted. If n8n stored something other than what was asked for, the
-  tool fails loudly instead of reporting success.
-- **The write token is the opt-in.** With no `MCP_WRITE_AUTH_TOKEN` set, the
-  mutating tools are not merely unused, they are never registered with the
-  client at all. Setting a long random token is the deliberate act that turns
-  writes on; `ENABLE_N8N_WORKFLOW_WRITE_TOOLS=false` force-disables them again.
-- **Per-call approval.** Even with a token, every mutating call needs both the
-  token and an explicit `approved: true` argument.
-- **Disposable test clones, safe by construction.** A clone has every trigger
-  and every outbound node (HTTP, email, Slack, Telegram, shell) disabled unless
-  you name an exception, and the deleter refuses to touch any workflow whose
-  name does not start with the temporary-test prefix.
-
-The operating procedure ships with the code, as `CLAUDE.md`, `AGENTS.md`, and a
-reusable agent skill, so your agent follows the same rules the server enforces.
-
-> [!NOTE]
-> **Scope, stated plainly.** Every tool the server registers by default is
-> generic and works against any workflow on any n8n instance. Two further
-> reference tools for one specific topology exist in the source but stay
-> unregistered unless you opt in with `ENABLE_EXAMPLE_TOOLS=true`.
+- **Plan and apply are separate.** The plan records a fingerprint of the exact
+  live state your change was designed against. If a colleague edits the
+  workflow in the n8n UI while you are reviewing the diff, the apply aborts —
+  including the case where the content changed but the version ID did not.
+- **A backup must exist to write.** Not advice in a document: the apply step
+  looks for a checksum-verified backup of that exact version and refuses
+  without one. Tampered backups do not count.
+- **The result is proven, not assumed.** After saving, the graph is re-fetched
+  and fingerprinted. An instance that stores something other than what it was
+  sent fails loudly instead of reporting success.
+- **Rehearsals cannot reach the outside world.** A test clone has every trigger
+  and every outbound node — HTTP, email, Slack, Telegram, shell — disabled
+  unless you name an exception. The deleter refuses to touch any workflow that
+  isn't one of these clones.
 
 ## Tools
 
-Read-only tools, always available:
+Read-only, always available:
 
 | Tool | Description |
 | --- | --- |
-| `n8n_get_workflow` | Compact workflow summary, or the full updateable definition. Never returns credential secrets. |
+| `n8n_get_workflow` | Workflow summary, or the full updateable definition. Never returns credential secrets. |
 | `n8n_diff_workflow` | Structured diff of a proposed definition against the live one. Stores nothing. |
-| `n8n_plan_workflow_update` | Phase 1 of a guarded update: backs up, diffs, and returns a `plan_id` to review. Changes nothing in n8n. |
-| `n8n_backup_workflow` | Writes a checksum-verified local backup. Reads n8n only. |
-| `n8n_list_test_clones` | Finds leftover temporary clones so nothing is left running. |
+| `n8n_plan_workflow_update` | Phase 1: backs up, diffs, returns a `plan_id`. Changes nothing in n8n. |
+| `n8n_backup_workflow` | Writes a checksum-verified local backup. |
+| `n8n_list_test_clones` | Finds leftover rehearsal clones so nothing is left running. |
 
 Write tools, registered whenever `MCP_WRITE_AUTH_TOKEN` is set:
 
-| Tool | Scope | Description |
-| --- | --- | --- |
-| `n8n_apply_workflow_update` | Generic | Phase 2: commits a plan only if the live workflow still matches the plan and a verified backup of that version exists, then confirms by readback. |
-| `n8n_create_test_clone` | Generic | Inactive clone with every trigger and outbound node disabled unless explicitly allowed. |
-| `n8n_delete_test_clone` | Generic | Deactivates, deletes, and verifies removal. Refuses any workflow not named as a temporary test clone. |
-| `n8n_restore_workflow_backup` | Generic | Restores from a backup file as a normal plan, so it still shows a diff and needs an explicit apply. |
+| Tool | Description |
+| --- | --- |
+| `n8n_create_workflow` | Creates a new workflow from an agent-authored definition. Always inactive, read back and verified, backed up immediately. |
+| `n8n_apply_workflow_update` | Phase 2: commits a plan only if the live workflow still matches it and a verified backup exists, then confirms by readback. |
+| `n8n_create_test_clone` | Inactive clone with every trigger and outbound node disabled unless explicitly allowed. |
+| `n8n_delete_test_clone` | Deactivates, deletes, verifies removal. Refuses anything that isn't a rehearsal clone. |
+| `n8n_restore_workflow_backup` | Restores from a backup as a normal plan, so it still shows a diff and needs an explicit apply. |
 
-Every write tool additionally requires `approved: true` and the write token on
-each call, so an agent cannot mutate anything by accident even when the tools
-are registered. To keep the server strictly read-only even with a token
-present, set `ENABLE_N8N_WORKFLOW_WRITE_TOOLS=false`.
-
-Two further tools, `n8n_test_supplier_email_action_routing` and
-`n8n_configure_supplier_email_action_routing`, are **reference
-implementations** for one exact Shopify-triggered order-email topology. They
-are not registered unless you also set `ENABLE_EXAMPLE_TOOLS=true`, because
-they fail closed on any other workflow shape. Read
-`src/n8n/emailActionRouting.ts` and `src/n8n/emailActionTestClone.ts` to see
-how a topology-specific guarded tool is built on top of the generic layer.
-
-### A guarded change, end to end
-
-```text
-n8n_plan_workflow_update   -> review the diff, keep the plan_id
-n8n_create_test_clone      -> rehearse with no triggers and no outbound calls
-n8n_delete_test_clone      -> clean up, verified gone
-n8n_apply_workflow_update  -> commits only if nothing moved, verifies by readback
-```
+Every write additionally requires `approved: true` and the token on each call,
+so an agent cannot mutate anything by accident. To keep the server strictly
+read-only even with a token present, set
+`ENABLE_N8N_WORKFLOW_WRITE_TOOLS=false`.
 
 ## Configuration
 
@@ -148,36 +143,31 @@ n8n_apply_workflow_update  -> commits only if nothing moved, verifies by readbac
 | --- | --- | --- | --- |
 | `N8N_BASE_URL` | Yes | — | Instance root URL, or an explicit `/api/v1` URL. |
 | `N8N_API_KEY` | Yes | — | Created under Settings → n8n API. |
+| `MCP_WRITE_AUTH_TOKEN` | For writes | — | Long random value. **Setting it is what enables the write tools.** |
 | `ENABLE_N8N_WORKFLOW_TOOLS` | No | `true` | Registers the read-only tools. |
-| `MCP_WRITE_AUTH_TOKEN` | For writes | — | Long random value. **Setting it is what enables the write tools**; with it empty they are never registered. |
-| `ENABLE_N8N_WORKFLOW_WRITE_TOOLS` | No | `true` | Set `false` to force writes off even when a token is configured. |
-| `ENABLE_EXAMPLE_TOOLS` | No | `false` | Registers the two topology-specific reference tools. |
-| `N8N_MCP_BACKUP_DIR` | No | `<user config>/backups` | Where verified workflow backups are written. |
+| `ENABLE_N8N_WORKFLOW_WRITE_TOOLS` | No | `true` | Set `false` to force writes off even with a token configured. |
+| `N8N_MCP_BACKUP_DIR` | No | `<user config>/backups` | Where verified backups are written. |
+| `ENABLE_EXAMPLE_TOOLS` | No | `false` | Registers two topology-specific reference tools (see below). |
 
-Resolved in this order, first match wins:
+Values resolve in this order, first match wins:
 
-1. **The process environment** — whatever your client passes in its `env` block.
+1. **The process environment** — what your client passes in its `env` block.
 2. **`N8N_MCP_ENV_FILE`** — an explicit path to a dotenv file.
-3. **A `.env` beside the package** — how a cloned checkout is normally set up.
-4. **A user-level `.env`** — `%APPDATA%\n8n-mcp-guard\.env` on Windows,
-   `~/.config/n8n-mcp-guard/.env` on macOS and Linux.
+3. **A `.env` beside the package** — how a cloned checkout is set up.
+4. **A user-level `.env`** — the path from the quick start above.
 
 Option 4 is recommended: your API key never appears in a client config file or
-a project repository. On startup the server reports which source it used on
-stderr, and warns about any missing required value.
+a project repository. On startup the server reports which source it used, on
+stderr.
 
 > Never commit a real `.env`. It is git-ignored here and excluded from the
 > published npm package.
 
 ## Client setup
 
-Any client that speaks MCP over stdio works. If you installed from source,
-replace `n8n-mcp-guard` with `node "C:\absolute\path\to\dist\index.js"`.
-
-### Cursor, Windsurf, Claude Desktop, and most other clients
-
-These use the widely adopted `mcpServers` shape — check your client's docs for
-the config file location:
+Any client that speaks MCP over stdio works. Cursor, Windsurf, Claude Desktop
+and most others use this shape — check your client's docs for the file
+location:
 
 ```json
 {
@@ -190,54 +180,32 @@ the config file location:
 }
 ```
 
-With a user-level `.env` in place, no `env` block is needed at all. If you
-prefer inline config, add one:
+With a user-level `.env` in place, no `env` block is needed. VS Code uses the
+same entry shape under a `servers` key instead of `mcpServers`; add it through
+**MCP: Add Server** in the Command Palette.
 
-```json
-"env": {
-  "N8N_BASE_URL": "https://your-instance.example.com",
-  "N8N_API_KEY": "your-api-key"
-}
-```
+## Where the guarantees stop
 
-### VS Code
+Being precise about this is the point of the project, so here is the honest
+boundary.
 
-VS Code uses the same entry shape under a `servers` key instead of
-`mcpServers`. Add it via **MCP: Add Server** in the Command Palette, or put the
-equivalent block in your `mcp.json`.
+**Confirming a message looked right is yours.** If a change affects delivery,
+someone still has to look at the test inbox. No server can prove a human read
+an email, and this one does not pretend to. What it guarantees is that you can
+always get back to the version that worked. `CLAUDE.md`, `AGENTS.md` and the
+bundled agent skill encode the review procedure so your agent follows it.
 
-## Safety model
+**The write paths are unit-tested, not integration-tested.** Every refusal path
+is covered against a fake n8n, and the read-only layer has been exercised
+against 99 real workflows. An integration suite against a disposable live
+instance is on the roadmap.
 
-Read-only inspection works without registering a single write tool: leave
-`MCP_WRITE_AUTH_TOKEN` empty and the server has no mutating capability at all.
-Once a token is set, every mutating call still requires that token and
-`approved: true`.
-The write path validates the expected nodes, checks the workflow version
-optimistically, and verifies the saved graph after mutation — refusing to
-publish when the readback does not match the request.
-
-`CLAUDE.md` and `AGENTS.md` add stricter agent-facing rules: local backups,
-isolated test clones, controlled delivery to test destinations only, mandatory
-cleanup, and production readback.
-`.claude/skills/n8n-safe-change/SKILL.md` packages the same procedure as a
-reusable skill for Claude Code.
-
-> [!IMPORTANT]
-> **What is and is not enforced.** The backup gate, the version and content
-> match, the readback check, and the clone delete guard are enforced in code and
-> covered by tests. The *controlled real-delivery test* - actually sending one
-> message to a test destination and confirming receipt - is not machine-verified;
-> the server cannot prove a human checked an inbox. That step still relies on the
-> agent instructions in `CLAUDE.md` and `AGENTS.md`. Keep write tools disabled
-> unless you can supervise the change.
->
-> **Verification status.** 56 unit tests cover the logic, including every abort
-> path. The read-only half of the generic layer has also been validated against
-> a live instance: workflow fingerprinting, diffing, clone construction and the
-> backup gate were run across 99 real production workflows spanning 40 distinct
-> node types, neutralizing 114 triggers and 304 outbound nodes with no failures.
-> The *write* paths (apply, create clone, delete clone) are covered by unit
-> tests against a fake n8n, not yet by an integration suite against a real one.
+**Two tools are examples, not products.** `n8n_test_supplier_email_action_routing`
+and `n8n_configure_supplier_email_action_routing` target one exact
+Shopify-triggered order-email topology and fail closed on anything else. They
+stay unregistered unless you set `ENABLE_EXAMPLE_TOOLS=true`. Read
+`src/n8n/emailActionRouting.ts` and `src/n8n/emailActionTestClone.ts` to see
+how a workflow-specific guarded tool is built on the generic layer.
 
 ## Install from source
 
@@ -245,7 +213,7 @@ reusable skill for Claude Code.
 git clone https://github.com/FarazHayder/n8n-mcp-guard.git
 cd n8n-mcp-guard
 npm ci          # also builds, via the prepare script
-npm run check   # typecheck, tests, build, MCP handshake smoke test
+npm run check   # typecheck, tests, build, MCP handshake
 ```
 
 Then point your client at the absolute path to `dist/index.js`.
@@ -265,19 +233,15 @@ Run `npm run check` before opening a pull request.
 
 ## Roadmap
 
-Shipped: generic guarded updates, an enforced backup gate, generic test clones,
-and structured diffs.
-
 - An integration suite against a disposable n8n instance in CI.
-- Machine-verifiable evidence for the controlled-delivery step.
 - Generic execution rehearsal: drive a clone with synthetic input and assert
-  which nodes ran, without topology-specific code.
+  which nodes ran, without workflow-specific code.
+- Richer diffs, including expression-level changes inside Code nodes.
 
 ## Contributing
 
-Contributions are welcome — bug fixes, documentation, tests, safety hardening,
-and new *generic* n8n tools are all in scope. Please read
-[CONTRIBUTING.md](CONTRIBUTING.md) first.
+Bug fixes, documentation, tests, safety hardening, and new *generic* n8n tools
+are all welcome. Please read [CONTRIBUTING.md](CONTRIBUTING.md) first.
 
 Never include API keys, `.env` files, production workflow exports, customer
 data, or anything from `n8n-workflow-backups/` in an issue or pull request.

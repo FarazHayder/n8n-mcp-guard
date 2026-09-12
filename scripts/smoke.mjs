@@ -15,6 +15,7 @@ const READ_ONLY_TOOLS = [
 
 const WRITE_TOOLS = [
   'n8n_apply_workflow_update',
+  'n8n_create_workflow',
   'n8n_create_test_clone',
   'n8n_delete_test_clone',
   'n8n_restore_workflow_backup',

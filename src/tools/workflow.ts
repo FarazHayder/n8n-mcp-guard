@@ -5,6 +5,7 @@ import { N8nApiError, type N8nClient, type N8nWorkflow } from '../n8n/client.js'
 import { readFileSync } from 'node:fs';
 import { findBackup, readBackup, writeBackup } from '../n8n/backup.js';
 import { diffWorkflows, workflowSignature } from '../n8n/graph.js';
+import { prepareNewWorkflow } from '../n8n/create.js';
 import {
   assertDeletableClone,
   buildTestClone,
@@ -187,6 +188,52 @@ export function registerWorkflowTools(
           removedNodes: built.removedNodes,
           deliberatelyAllowed: savedSafety.deliberatelyAllowed,
           reminder: 'Delete this clone with n8n_delete_test_clone when the rehearsal is finished.',
+        });
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+  );
+
+  server.tool(
+    'n8n_create_workflow',
+    'Create a new n8n workflow from a definition you author. Always created inactive, so nothing runs until you turn it on in n8n. The saved result is read back and compared to what was sent, and a local backup is written immediately so there is a restore point from the very first version. Use this to build a new automation with an agent; use n8n_plan_workflow_update to change one that already exists.',
+    {
+      definition: workflowDefinition,
+      approved: z.literal(true),
+      write_token: z.string().min(1),
+    },
+    async ({ definition, write_token }) => {
+      const guardError = writeGuard(write_token);
+      if (guardError) return jsonContent({ error: guardError });
+      try {
+        const api = client();
+        const payload = prepareNewWorkflow(asWorkflow(definition));
+        const created = await api.createWorkflow(payload);
+        const workflowId = String(created.id ?? '');
+        if (!workflowId) throw new Error('n8n created the workflow without returning an ID.');
+
+        // Read back what n8n actually stored rather than trusting the response.
+        const saved = await api.getWorkflow(workflowId);
+        const matches = workflowSignature(saved) === workflowSignature(payload);
+        const backup = writeBackup(saved, env.backupDir);
+
+        return jsonContent({
+          ok: true,
+          workflowId,
+          workflowName: saved.name,
+          active: saved.active ?? false,
+          versionId: saved.versionId ?? null,
+          nodeCount: saved.nodes.length,
+          readbackMatches: matches,
+          backupPath: backup.path,
+          ...(matches
+            ? {}
+            : {
+                warning:
+                  'n8n normalised or altered the definition on save. The workflow was created; inspect it with n8n_get_workflow before building on it.',
+              }),
+          note: 'Created inactive. Activate it in n8n when you are ready.',
         });
       } catch (error) {
         return errorResult(error);
