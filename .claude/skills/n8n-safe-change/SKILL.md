@@ -8,10 +8,17 @@ description: Safety procedure for reading, testing, and changing n8n workflows t
 Treat every n8n workflow as production infrastructure. Reading and diagnosis
 are always allowed. Mutation is gated.
 
-## The happy path
+## Building something new
 
-For any production change, run these in order. Each one is a real tool; do not
-hand-roll an equivalent.
+Creating a workflow is not a production change. `n8n_create_workflow` always
+creates it inactive, so nothing runs and there is no previous version to lose.
+Build it, read it back, and iterate freely. Do not activate it without asking
+the user first. Do not impose backup, clone or delivery ceremony on a workflow
+that has never run.
+
+## Changing a workflow that already exists
+
+Run these in order. Each is a real tool; do not hand-roll an equivalent.
 
 ```text
 1. n8n_get_workflow            read it, understand it
@@ -47,11 +54,13 @@ the evidence; do not route around it.
 
 The server cannot verify these. They are your responsibility.
 
-### Isolated delivery testing
+### Isolated delivery testing, when delivery is what changed
 
-If a change affects delivery, the clone must send exactly one real message,
-with synthetic data, to a dedicated internal test inbox or test chat. Prefix
-the subject or body with `TEST — DO NOT ACTION`.
+Only when the change affects an email, message or webhook that reaches someone:
+the clone must send exactly one real message, with synthetic data, to a
+dedicated internal test inbox or test chat. Prefix the subject or body with
+`TEST — DO NOT ACTION`. A change that touches no outbound node needs no test
+send.
 
 Pass the one node under test to `allow_node_names` so it stays enabled, and
 override the destination. Never send to a real customer, a production

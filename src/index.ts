@@ -7,7 +7,7 @@ import { registerN8nTools } from './tools/n8n.js';
 async function main(): Promise<void> {
   const server = new McpServer({
     name: 'n8n-mcp-guard',
-    version: '1.2.1',
+    version: '1.2.2',
   });
 
   registerN8nTools(server);

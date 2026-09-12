@@ -1,14 +1,61 @@
-### Mandatory n8n workflow change safety
+### n8n workflow safety
 
-Treat every n8n workflow as production infrastructure. Reading and diagnosis are allowed, but no production workflow may be created, updated, activated, deactivated, published, or deleted unless all of the following gates are followed in order:
+Reading and diagnosis are always allowed. What follows applies to changes, and
+the level of ceremony scales with what is actually at risk.
 
-1. **Back up before mutation.** Immediately before changing a workflow, fetch its latest complete definition and save it under the local-only `n8n-workflow-backups/` directory. Use a timestamped filename containing the workflow ID and a filesystem-safe workflow name. Verify that the file exists, parses as JSON, and records the expected workflow ID, name, version ID, and active state. Never commit, upload, paste, or otherwise share these backups; they may contain production configuration or inline secrets.
-2. **Protect the backup directory.** `n8n-workflow-backups/` must remain ignored by Git. Never force-add it, remove its ignore rule, or place workflow backups elsewhere in the repository.
-3. **Test only in a temporary clone.** Create a temporary inactive clone from the just-backed-up version. Give it an unmistakable `TEMP TEST` name, disable or remove normal production triggers and unrelated writes, and constrain it to synthetic test data and exactly one intended execution. Never use a real customer as the test recipient.
-4. **Require one isolated real delivery to a test destination.** The temporary clone must send exactly one real email or one real Telegram message using synthetic data and a dedicated internal test email inbox or dedicated test Telegram chat. The production provider credential may be reused only when necessary to validate the integration, and the clone must override the destination. Never send a test to a real customer, production recipient, or production Telegram group. Prefix the subject or message with `TEST — DO NOT ACTION`. If no isolated test destination is available, or if the destination or payload is uncertain, do not send anything; stop and discuss it with the user.
-5. **Verify the result.** Confirm the temporary execution succeeded, only the expected outbound node ran, exactly one message was accepted by the provider, and the delivered message is correct. Do not treat an n8n `success` status alone as proof of receipt when delivery evidence is available.
-6. **Always remove the temporary workflow.** Whether the test passes or fails, deactivate and permanently delete the temporary clone, then verify it no longer exists. Do not leave test workflows, triggers, schedules, webhooks, executions, or other avoidable n8n resources running.
-7. **Change production only after cleanup and confidence.** Only after the backup is verified, the controlled live-delivery test passes, and the temporary clone is confirmed deleted may the production workflow be changed. Re-read the production workflow and verify its version has not changed before applying the edit, then read it back after the edit and verify the exact intended graph and active/published state.
-8. **Fail closed.** If any backup, isolation, live-delivery, cleanup, version, or verification step fails—or if there is any remaining uncertainty—do not modify production. Stop and discuss the evidence and next decision with the user.
+#### Building something new
 
-The authorization to perform a future n8n change is limited to the requested workflow and requested behavior. It does not authorize unrelated production changes, customer-facing or production-channel test messages, bulk sends, or skipping any gate above.
+Creating a workflow is not a production change. There is no previous version to
+lose, and `n8n_create_workflow` always creates it inactive, so nothing runs.
+
+- Build it, read it back, iterate freely.
+- Do not activate a workflow without asking the user first. Activation is the
+  moment it becomes real.
+- Once it is live, it is covered by the section below.
+
+Do not impose backup, clone or delivery ceremony on a workflow that has never
+run. It slows the user down and protects nothing.
+
+#### Changing a workflow that already exists
+
+1. **Plan first.** Use `n8n_plan_workflow_update`. It backs the workflow up and
+   returns a diff. Show the user the diff and get agreement before applying.
+2. **Rehearse when the change is non-obvious.** `n8n_create_test_clone` gives
+   an inactive copy with every trigger and outbound node disabled. Use it for
+   anything involving routing, conditionals, or nodes that contact the outside
+   world. Skip it for a trivial, obvious edit.
+3. **Test real delivery only when delivery is what changed.** If the change
+   affects an email, message or webhook that reaches someone, send exactly one
+   message with synthetic data to a dedicated test inbox or test chat, prefixed
+   `TEST — DO NOT ACTION`. Pass that one node to `allow_node_names` and override
+   the destination. Never send to a real customer, production recipient or
+   production group. If no isolated test destination exists, or the destination
+   or payload is uncertain, send nothing and ask.
+4. **Clean up.** Delete every clone with `n8n_delete_test_clone`, pass or fail.
+   Confirm with `n8n_list_test_clones` that nothing is left running.
+5. **Apply.** `n8n_apply_workflow_update` refuses if the workflow moved since
+   planning or if its backup is missing, and verifies the result by readback.
+6. **Report honestly.** If a tool refuses, that is the safety system working.
+   Report the refusal and the evidence; do not route around it.
+
+#### What the server already enforces
+
+Do not reimplement these by hand:
+
+- A checksum-verified backup must exist for the exact version being changed.
+- An update aborts if the version moved, or if content changed while the
+  version ID did not.
+- Saved graphs are read back and compared; a mismatch is an error.
+- Clone deletion refuses any workflow that is not one of its own test clones.
+
+#### Backups are sensitive
+
+Backups may contain production configuration or inline secrets. Never commit,
+upload, paste or share them, and keep their directory git-ignored.
+
+#### Fail closed
+
+If a gate fails, or uncertainty remains about a change to a live workflow, stop
+and put the evidence to the user. Authorization is scoped to the workflow and
+behaviour actually requested; it never extends to unrelated changes,
+customer-facing test messages, or bulk sends.

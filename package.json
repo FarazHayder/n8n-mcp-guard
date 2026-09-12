@@ -1,6 +1,6 @@
 {
   "name": "n8n-mcp-guard",
-  "version": "1.2.1",
+  "version": "1.2.2",
   "type": "module",
   "license": "MIT",
   "description": "Safety-conscious MCP server for n8n workflow inspection and controlled automation changes",
