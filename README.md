@@ -188,22 +188,25 @@ With a user-level `.env` in place, no `env` block is needed. VS Code uses the
 same entry shape under a `servers` key instead of `mcpServers`; add it through
 **MCP: Add Server** in the Command Palette.
 
-## Where the guarantees stop
+## The division of labour
 
-Being precise about this is the point of the project, so here is the boundary.
+**The server owns recoverability.** Backups, version matching, readback
+verification, clone neutralization and cleanup are enforced in code and
+covered by tests. You can always get back to the version that worked.
 
-**Confirming a message looked right is yours.** If a change affects delivery,
-someone still has to look at the test inbox. No server can prove a human read
-an email, and this one does not pretend to. What it guarantees is that you can
-always get back to the version that worked. `CLAUDE.md`, `AGENTS.md` and the
-bundled agent skill encode the review procedure so your agent follows it.
+**You own judgement.** Whether the new routing is the routing you wanted, and
+whether the test email read correctly, are calls only you can make. `CLAUDE.md`,
+`AGENTS.md` and the bundled agent skill encode that review procedure so your
+agent walks you through it rather than skipping it.
 
-**Two tools are examples, not products.** `n8n_test_supplier_email_action_routing`
-and `n8n_configure_supplier_email_action_routing` target one exact
-Shopify-triggered order-email topology and fail closed on anything else. They
-stay unregistered unless you set `ENABLE_EXAMPLE_TOOLS=true`. Read
-`src/n8n/emailActionRouting.ts` and `src/n8n/emailActionTestClone.ts` to see
-how a workflow-specific guarded tool is built on the generic layer.
+### Bundled examples
+
+`n8n_test_supplier_email_action_routing` and
+`n8n_configure_supplier_email_action_routing` are worked examples of a
+workflow-specific guarded tool built on the generic layer. They target one
+exact Shopify-triggered order-email topology, so they stay unregistered unless
+you set `ENABLE_EXAMPLE_TOOLS=true`. Read `src/n8n/emailActionRouting.ts` and
+`src/n8n/emailActionTestClone.ts` if you want to build your own.
 
 ## Install from source
 

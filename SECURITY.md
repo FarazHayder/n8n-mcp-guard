@@ -1,26 +1,40 @@
 # Security Policy
 
-This project connects AI agents to n8n instances and may be given credentials
-that can read or modify production workflows. Treat security reports and
-configuration mistakes seriously.
+`n8n-mcp-guard` holds an n8n API key and can change workflows, so security
+reports are taken seriously and handled promptly.
 
 ## Reporting a vulnerability
 
-Do not open a public issue for a suspected vulnerability. Use GitHub's private
-vulnerability reporting feature for this repository when available. Include a
-clear description, affected version or commit, reproduction steps, impact, and
-any suggested mitigation. Do not include real credentials or customer data.
+Please don't open a public issue for a suspected vulnerability. Use GitHub's
+private vulnerability reporting on this repository. Include a clear
+description, the affected version or commit, reproduction steps, impact, and
+any suggested mitigation. Don't include real credentials or customer data.
 
-## Operational guidance
+## How the server protects you
 
-- Use a dedicated n8n API key with the least privilege available.
-- Keep `.env` and `n8n-workflow-backups/` local and untracked.
-- Leave `ENABLE_N8N_WORKFLOW_WRITE_TOOLS=false` unless write access is required.
-- Review tool arguments and generated workflow changes before approval.
-- Revoke and rotate credentials immediately if they may have been exposed.
-- Prefer HTTPS for remote n8n instances; plain HTTP should be limited to trusted
-  local development environments.
+- Write tools are not registered at all until `MCP_WRITE_AUTH_TOKEN` is set,
+  and every write call must also carry that token and `approved: true`.
+- Every update is planned against a fingerprint of the live workflow and
+  refused if anything changed underneath it.
+- A checksum-verified backup of the exact version being modified must exist on
+  disk before a write is allowed.
+- Saved results are read back and compared, so a silent divergence is an error
+  rather than a success.
+- Clone deletion refuses any workflow that isn't one of its own test clones.
+- Workflow definitions are returned without credential secrets.
 
-Until tagged releases are published, security fixes are provided on the latest
-revision of the default branch.
+## Hardening your setup
 
+- Use a dedicated n8n API key with the least privilege your instance allows.
+- Treat `MCP_WRITE_AUTH_TOKEN` like a password: long, random, and stored in a
+  user-level `.env` rather than a client config file your editor may sync.
+- Keep `.env` and any workflow backups local and untracked. Backups can contain
+  production configuration.
+- Read the diff a plan returns before applying it. Two-phase commit exists so
+  that review is possible.
+- Rotate credentials immediately if they may have been exposed.
+- Prefer HTTPS for remote instances; limit plain HTTP to local development.
+
+## Supported versions
+
+Security fixes are released on the latest published version.
